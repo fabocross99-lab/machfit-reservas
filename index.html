@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MachFit Center — Reservas Exclusive</title>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --gold: #D4AF37; /* Dorado Premium */
+            --black-matte: #121212;
+            --surface: #1E1E1E;
+            --txt: #FFFFFF;
+            --border: rgba(212, 175, 55, 0.3);
+            --r: 10px;
+        }
+
+        body { font-family: 'Barlow', sans-serif; background: var(--black-matte); color: var(--txt); padding-bottom: 50px; }
+        .page { max-width: 600px; margin: 0 auto; padding: 20px; }
+        
+        .header { text-align: center; padding: 30px 0; border-bottom: 1px solid var(--border); margin-bottom: 25px; }
+        .logo { font-family: 'Barlow Condensed', sans-serif; font-size: 32px; color: var(--gold); letter-spacing: 3px; }
+
+        .day-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 20px; overflow: hidden; }
+        .day-head { background: #000; padding: 12px 20px; color: var(--gold); text-transform: uppercase; font-size: 14px; border-bottom: 1px solid var(--border); }
+
+        .slot { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 0.5px solid rgba(255,255,255,0.05); cursor: pointer; }
+        .slot:hover { background: rgba(212, 175, 55, 0.1); }
+        .status-badge { font-size: 11px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--gold); color: var(--gold); }
+
+        /* Estilos del Modal */
+        .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 1000; align-items: center; justify-content: center; }
+        .modal { background: var(--surface); width: 90%; max-width: 400px; padding: 30px; border-radius: var(--r); border: 1px solid var(--gold); }
+        input { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid var(--border); color: #fff; border-radius: 5px; margin-bottom: 15px; }
+        
+        .btn-gold { width: 100%; padding: 15px; background: var(--gold); color: #000; border: none; font-weight: 700; text-transform: uppercase; cursor: pointer; border-radius: 5px; }
+        
+        .bikes-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 15px 0; }
+        .bike { aspect-ratio: 1; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; border-radius: 5px; cursor: pointer; }
+        .bike.selected { background: var(--gold); color: #000; font-weight: 700; }
+        .bike.taken { opacity: 0.2; cursor: not-allowed; background: #333; }
+        
+        /* Mis Reservas */
+        .res-card { background: #2a2a2a; padding: 15px; border-radius: 8px; border-left: 4px solid var(--gold); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+    </style>
+</head>
+<body>
+
+<div class="page">
+    <header class="header">
+        <div class="logo">MACHFIT <span>CENTER</span></div>
+        <p style="font-size: 10px; color: var(--gold); letter-spacing: 2px;">EXCLUSIVE EXPERIENCE</p>
+    </header>
+
+    <div id="schedule-container"></div>
+
+    <div style="margin-top: 40px; border-top: 1px solid var(--border); padding-top: 20px;">
+        <h3 style="color: var(--gold); margin-bottom: 15px;">MIS RESERVAS ACTIVAS</h3>
+        <div style="display: flex; gap: 10px;">
+            <input type="text" id="check-code" placeholder="TU CÓDIGO (EJ: MF-01)" oninput="this.value = this.value.toUpperCase()" style="margin-bottom: 0;">
+            <button class="btn-gold" onclick="viewMyRes()" style="width: auto; padding: 0 20px;">VER</button>
+        </div>
+        <div id="my-res-results" style="margin-top: 15px;"></div>
+    </div>
+</div>
+
+<div id="modal-reserve" class="overlay">
+    <div class="modal">
+        <h3 id="modal-title" style="color:var(--gold); margin-bottom:15px;"></h3>
+        <input type="text" id="user-code" placeholder="CÓDIGO AFILIADO" oninput="this.value = this.value.toUpperCase()">
+        <input type="text" id="user-name" placeholder="NOMBRE COMPLETO">
+        <p style="font-size: 12px; color: var(--gold);">ELIGE TU BICI (MAX 11):</p>
+        <div class="bikes-grid" id="bikes-container"></div>
+        <button class="btn-gold" id="confirm-btn" onclick="processBooking()">CONFIRMAR</button>
+        <button onclick="closeModal()" style="background:none; border:none; color:#aaa; width:100%; margin-top:10px; cursor:pointer;">Cerrar</button>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, push, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCVbQMp5Ic-BTlM1VJIfTeLa0rLN6inBXE",
+        authDomain: "machfit-cycling.firebaseapp.com",
+        databaseURL: "https://machfit-cycling-default-rtdb.firebaseio.com",
+        projectId: "machfit-cycling",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    let reservations = {};
+    let selectedBike = null;
+    let currentSlotKey = null;
+
+    onValue(ref(db, 'reservaciones'), (snap) => {
+        reservations = snap.val() || {};
+        renderSchedule();
+    });
+
+    function renderSchedule() {
+        const container = document.getElementById('schedule-container');
+        container.innerHTML = '';
+        const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+        const hours = ['06:00-07:00', '07:00-08:00', '18:00-19:00', '19:00-20:00'];
+
+        days.forEach(day => {
+            let html = `<div class="day-block"><div class="day-head">${day}</div>`;
+            hours.forEach(hour => {
+                const key = `${day}_${hour}`.replace(/:/g, '');
+                const count = Object.values(reservations).filter(r => r.slot === key).length;
+                html += `
+                    <div class="slot" onclick="openModal('${day}', '${hour}', '${key}')">
+                        <div><div style="font-weight:600;">${hour}</div><div style="font-size:11px; color:#888;">INSTRUCTOR: MANU</div></div>
+                        <div class="status-badge">${count}/11 CUPOS</div>
+                    </div>`;
+            });
+            container.innerHTML += html + `</div>`;
+        });
+    }
+
+    window.openModal = (day, hour, key) => {
+        currentSlotKey = key;
+        selectedBike = null;
+        document.getElementById('modal-title').innerText = `${day} ${hour}`;
+        const container = document.getElementById('bikes-container');
+        container.innerHTML = '';
+        const taken = Object.values(reservations).filter(r => r.slot === key).map(r => parseInt(r.bike));
+        
+        for(let i=1; i<=11; i++) {
+            const isTaken = taken.includes(i);
+            const div = document.createElement('div');
+            div.className = `bike ${isTaken ? 'taken' : ''}`;
+            div.innerText = i;
+            if(!isTaken) div.onclick = () => {
+                document.querySelectorAll('.bike').forEach(b => b.classList.remove('selected'));
+                div.classList.add('selected');
+                selectedBike = i;
+            };
+            container.appendChild(div);
+        }
+        document.getElementById('modal-reserve').style.display = 'flex';
+    };
+
+    window.closeModal = () => document.getElementById('modal-reserve').style.display = 'none';
+
+    window.processBooking = async () => {
+        const code = document.getElementById('user-code').value.trim();
+        const name = document.getElementById('user-name').value.trim();
+        if(!code || !name || !selectedBike) return alert("Completa todos los datos.");
+        
+        const already = Object.values(reservations).some(r => r.slot === currentSlotKey && r.code === code);
+        if(already) return alert("Ya tienes una reserva en esta clase.");
+
+        await push(ref(db, 'reservaciones'), { code, name, bike: selectedBike, slot: currentSlotKey });
+        alert("¡Reserva confirmada!");
+        closeModal();
+    };
+
+    window.viewMyRes = () => {
+        const code = document.getElementById('check-code').value.trim().toUpperCase();
+        const results = document.getElementById('my-res-results');
+        const myRes = Object.entries(reservations).filter(([id, r]) => r.code === code);
+        
+        results.innerHTML = myRes.length ? myRes.map(([id, r]) => `
+            <div class="res-card">
+                <div><div style="font-size:14px; font-weight:600;">${r.slot.replace('_', ' ')}</div><div style="color:var(--gold); font-size:12px;">BICI #${r.bike}</div></div>
+                <button onclick="cancelRes('${id}')" style="background:none; border:1px solid #ff5252; color:#ff5252; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:10px;">CANCELAR</button>
+            </div>`).join('') : '<p style="font-size:12px; color:#888;">No hay reservas.</p>';
+    };
+
+    window.cancelRes = async (id) => {
+        if(confirm("¿Liberar este cupo?")) {
+            await remove(ref(db, `reservaciones/${id}`));
+            alert("Cupo liberado.");
+            viewMyRes();
+        }
+    };
+</script>
+</body>
+</html>
