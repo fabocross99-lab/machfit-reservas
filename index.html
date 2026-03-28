@@ -39,6 +39,7 @@
         .bike.taken { opacity: 0.2; cursor: not-allowed; background: #333; }
         
         .res-item { background: #2a2a2a; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 3px solid var(--gold); display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+        .btn-cancel-user { background: none; border: 1px solid #ff5252; color: #ff5252; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -52,7 +53,7 @@
     <div id="schedule-container"></div>
 
     <div style="margin-top: 40px; border-top: 1px solid var(--border); padding-top: 20px;">
-        <h3 style="color: var(--gold); margin-bottom: 15px;">MIS RESERVAS ACTIVAS</h3>
+        <h3 style="color: var(--gold); margin-bottom: 15px; font-family:'Barlow Condensed'; letter-spacing:1px;">MIS RESERVAS ACTIVAS</h3>
         <div style="display: flex; gap: 10px;">
             <input type="text" id="check-code" placeholder="CÓDIGO (EJ: MF-01)" oninput="this.value = this.value.toUpperCase()" style="margin-bottom: 0;">
             <button class="btn-gold" onclick="viewMyRes()" style="width: auto; padding: 0 20px;">VER</button>
@@ -74,7 +75,7 @@
 
 <div id="modal-admin" class="overlay">
     <div class="modal" style="max-width: 550px;">
-        <h3 style="color:var(--gold);">PANEL DE CONTROL</h3>
+        <h3 style="color:var(--gold); font-family:'Barlow Condensed';">PANEL DE CONTROL (ADMIN)</h3>
         <div id="admin-list" style="margin-top: 15px;"></div>
         <button class="btn-gold" onclick="document.getElementById('modal-admin').style.display='none'" style="margin-top:20px;">CERRAR</button>
     </div>
@@ -97,7 +98,6 @@
     let selectedBike = null;
     let currentSlotKey = null;
 
-    // CONFIGURACIÓN DE HORARIOS SEGÚN TUS INSTRUCCIONES
     const schedule = {
         'Lunes': ['06:00-07:00', '07:00-08:00', '18:00-19:00', '19:00-20:00'],
         'Martes': ['06:00-07:00'],
@@ -115,7 +115,6 @@
     function renderSchedule() {
         const container = document.getElementById('schedule-container');
         container.innerHTML = '';
-        
         for (const [day, hours] of Object.entries(schedule)) {
             let html = `<div class="day-block"><div class="day-head">${day}</div>`;
             hours.forEach(hour => {
@@ -131,8 +130,7 @@
     }
 
     window.openModal = (day, hour, key) => {
-        currentSlotKey = key;
-        selectedBike = null;
+        currentSlotKey = key; selectedBike = null;
         document.getElementById('modal-title').innerText = `${day} ${hour}`;
         const taken = Object.values(reservations).filter(r => r.slot === key).map(r => parseInt(r.bike));
         const grid = document.getElementById('bikes-container');
@@ -162,6 +160,33 @@
         alert("¡Reserva confirmada!"); closeModal();
     };
 
+    // CONSULTAR Y CANCELAR (USUARIO)
+    window.viewMyRes = () => {
+        const code = document.getElementById('check-code').value.trim().toUpperCase();
+        const results = document.getElementById('my-res-results');
+        const myRes = Object.entries(reservations).filter(([id, r]) => r.code === code);
+        
+        if (!code) return alert("Ingresa tu código.");
+        
+        results.innerHTML = myRes.length ? myRes.map(([id, r]) => `
+            <div class="res-item" style="background:#2a2a2a; border-left:3px solid var(--gold);">
+                <div>
+                    <b style="text-transform:uppercase;">${r.slot.replace('_',' ')}</b><br>
+                    <span style="color:var(--gold); font-size:12px;">BICICLETA #${r.bike}</span>
+                </div>
+                <button class="btn-cancel-user" onclick="userCancel('${id}')">CANCELAR</button>
+            </div>`).join('') : '<p style="font-size:13px; color:#888;">No tienes reservas activas.</p>';
+    };
+
+    window.userCancel = async (id) => {
+        if(confirm("¿Deseas cancelar tu reserva y liberar el cupo?")) {
+            await remove(ref(db, `reservaciones/${id}`));
+            alert("Reserva cancelada.");
+            viewMyRes();
+        }
+    };
+
+    // ADMIN
     window.openAdmin = () => {
         if (prompt("Clave admin:") === "machfit2024") {
             document.getElementById('modal-admin').style.display = 'flex';
@@ -173,23 +198,10 @@
         list.innerHTML = Object.entries(reservations).map(([id, r]) => `
             <div class="res-item">
                 <div><b>${r.name}</b> (${r.code})<br>${r.slot.replace('_',' ')} - Bici #${r.bike}</div>
-                <button onclick="adminDelete('${id}')" style="background:red; color:white; border:none; padding:5px; border-radius:3px; cursor:pointer;">X</button>
+                <button onclick="userCancel('${id}')" style="background:red; color:white; border:none; padding:5px; border-radius:3px; cursor:pointer;">X</button>
             </div>
         `).join('');
     }
-
-    window.adminDelete = async (id) => {
-        if(confirm("¿Eliminar?")) await remove(ref(db, `reservaciones/${id}`));
-    };
-
-    window.viewMyRes = () => {
-        const code = document.getElementById('check-code').value.trim().toUpperCase();
-        const res = Object.entries(reservations).filter(([id, r]) => r.code === code);
-        document.getElementById('my-res-results').innerHTML = res.length ? res.map(([id, r]) => `
-            <div style="background:#333; padding:10px; margin-bottom:5px; border-radius:5px; font-size:14px;">
-                ${r.slot.replace('_',' ')} - <b>Bici #${r.bike}</b>
-            </div>`).join('') : "No tienes reservas.";
-    };
 </script>
 </body>
 </html>
